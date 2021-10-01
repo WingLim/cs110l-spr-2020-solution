@@ -118,6 +118,13 @@ impl<T: PartialEq> PartialEq for LinkedList<T> {
     }
 }
 
+impl<T> Iterator for LinkedList<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.pop_front()
+    }
+}
+
 impl<'a, T: Clone> IntoIterator for &'a LinkedList<T> {
     type Item = T;
     type IntoIter = LinkedListIter<'a, T>;
