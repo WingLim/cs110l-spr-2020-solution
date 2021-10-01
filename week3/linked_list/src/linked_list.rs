@@ -43,6 +43,12 @@ impl<T: Clone> Clone for Node<T> {
     }
 }
 
+impl<T: PartialEq> PartialEq for Node<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value && self.next == other.next
+    }
+}
+
 impl<T> LinkedList<T> {
     pub fn new() -> LinkedList<T> {
         LinkedList {head: None, size: 0}
@@ -103,6 +109,12 @@ impl<T: Clone> Clone for LinkedList<T> {
             head: self.head.clone(),
             size: self.size
         }
+    }
+}
+
+impl<T: PartialEq> PartialEq for LinkedList<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.size == other.size && self.head == other.head
     }
 }
 
