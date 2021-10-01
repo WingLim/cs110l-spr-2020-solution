@@ -15,7 +15,7 @@ fn main() {
     let process = ps_utils::get_target(&target).expect("Fail to get target");
 
     if process.is_some() {
-        println!("Found pid {}", process.unwrap().pid);
+        process.unwrap().print();
     } else {
         println!("Target \"{}\" did not match any running PIDs or executables", target);
         std::process::exit(1);
