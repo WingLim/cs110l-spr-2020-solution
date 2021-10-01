@@ -12,13 +12,16 @@ fn main() {
     }
     let target = &args[1];
 
-    let process = ps_utils::get_target(&target).expect("Fail to get target");
+    let target_get = ps_utils::get_target(&target).expect("Fail to get target");
 
-    if process.is_some() {
-        process.unwrap().print();
-    } else {
-        println!("Target \"{}\" did not match any running PIDs or executables", target);
-        std::process::exit(1);
+    match target_get {
+        Some(process) => {
+            process.print();
+        },
+        None => {
+            println!("Target \"{}\" did not match any running PIDs or executables", target);
+            std::process::exit(1);
+        }
     }
 }
 
