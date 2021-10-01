@@ -40,9 +40,9 @@ fn lcs(seq1: &Vec<String>, seq2: &Vec<String>) -> Grid {
     for i in 0..m {
         for j in 0..n {
             if seq1[i] == seq2[j] {
-                lcs_table.set(i+1, j+1, C.get(i, j).unwrap() + 1).unwrap();
+                lcs_table.set(i+1, j+1, lcs_table.get(i, j).unwrap() + 1).unwrap();
             } else {
-                lcs_table.set(i+1, j+1, cmp::max(C.get(i+1, j).unwrap(), C.get(i, j+1).unwrap())).unwrap();
+                lcs_table.set(i+1, j+1, cmp::max(lcs_table.get(i+1, j).unwrap(), lcs_table.get(i, j+1).unwrap())).unwrap();
             }
         }
     }
