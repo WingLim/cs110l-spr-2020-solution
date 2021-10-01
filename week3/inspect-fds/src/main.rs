@@ -17,6 +17,11 @@ fn main() {
     match target_get {
         Some(process) => {
             process.print();
+            println!("");
+            let child_processes = ps_utils::get_child_processes(process.pid).expect("Fail to gt child processes");
+            for one in child_processes {
+                one.print();
+            }
         },
         None => {
             println!("Target \"{}\" did not match any running PIDs or executables", target);
