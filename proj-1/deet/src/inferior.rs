@@ -4,6 +4,7 @@ use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::os::unix::prelude::CommandExt;
 use std::process::{Child, Command};
+use crate::dwarf_data::DwarfData;
 
 pub enum Status {
     /// Indicates inferior stopped. Contains the signal that stopped the process, as well as the
@@ -74,5 +75,26 @@ impl Inferior {
         self.child.kill().unwrap();
         self.wait(None).unwrap();
         println!("Killing running inferior (pid {})", self.pid());
+    }
+
+    pub fn print_backtrace(&self, debug_data: &DwarfData) -> Result<(), nix::Error> {
+        let regs = ptrace::getregs(self.pid())?;
+        let mut rip = regs.rip as usize;
+        let mut rbp = regs.rbp as usize;
+
+        loop {
+            let line = debug_data.get_line_from_addr(rip).unwrap();
+            let func = debug_data.get_function_from_addr(rip).unwrap();
+            println!("{} ({})", func, line);
+
+            if func == "main" {
+                break;
+            }
+
+            rip = ptrace::read(self.pid(), (rbp + 8) as ptrace::AddressType)? as usize;
+            rbp = ptrace::read(self.pid(), rbp as ptrace::AddressType)? as usize;
+        }
+
+        Ok(())
     }
 }
