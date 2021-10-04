@@ -82,7 +82,12 @@ impl Debugger {
 
     fn check_status(&mut self, status: Result<Status, nix::Error>) {
         match status.unwrap() {
-            Status::Stopped(signal, _rip) => println!("Child stopped (signal {})", signal),
+            Status::Stopped(signal, rip) => {
+                println!("Child stopped (signal {})", signal);
+                let line = self.debug_data.get_line_from_addr(rip).unwrap();
+                let func = self.debug_data.get_function_from_addr(rip).unwrap();
+                println!("Stopped at {} ({})", func, line);
+            },
             Status::Exited(exit_code) => {
                 println!("Child exited (status {})", exit_code);
                 self.inferior = None;
