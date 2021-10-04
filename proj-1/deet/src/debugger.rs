@@ -32,23 +32,48 @@ impl Debugger {
         loop {
             match self.get_next_command() {
                 DebuggerCommand::Run(args) => {
+                    if self.inferior.is_some() {
+                        self.inferior.as_mut().unwrap().kill();
+                        self.inferior = None;
+                    }
                     if let Some(inferior) = Inferior::new(&self.target, &args) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         
-                        match self.inferior.as_mut().unwrap().continue_run().unwrap() {
-                            Status::Stopped(signal, _rip) => println!("Child stopped (signal {})", signal),
-                            Status::Exited(exit_code) => println!("Child exited (status {})", exit_code),
-                            Status::Signaled(signal) => println!("Child exited (signal {})", signal),
-                        }
+                        let status = self.inferior.as_mut().unwrap().continue_run();
+                        self.check_status(status);
                     } else {
                         println!("Error starting subprocess");
                     }
                 }
+                DebuggerCommand::Continue => {
+                    if self.inferior.is_none() {
+                        println!("Error no subprocess running");
+                    } else {
+                        let status = self.inferior.as_mut().unwrap().continue_run();
+                        self.check_status(status);
+                    }
+                }
                 DebuggerCommand::Quit => {
+                    self.inferior.as_mut().unwrap().kill();
+                    self.inferior = None;
                     return;
                 }
             }
+        }
+    }
+
+    fn check_status(&mut self, status: Result<Status, nix::Error>) {
+        match status.unwrap() {
+            Status::Stopped(signal, _rip) => println!("Child stopped (signal {})", signal),
+            Status::Exited(exit_code) => {
+                println!("Child exited (status {})", exit_code);
+                self.inferior = None;
+            },
+            Status::Signaled(signal) => {
+                println!("Child exited (signal {})", signal);
+                self.inferior = None;
+            },
         }
     }
 
