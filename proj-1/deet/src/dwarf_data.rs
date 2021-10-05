@@ -100,6 +100,17 @@ impl DwarfData {
         })
     }
 
+    pub fn get_function(&self, curr_addr: usize) -> Option<Function> {
+        for file in &self.files {
+            for func in &file.functions {
+                if func.address <= curr_addr && (func.address + func.text_length) >= curr_addr {
+                    return Some(func.clone());
+                }
+            }
+        }
+        None
+    }
+
     #[allow(dead_code)]
     pub fn get_function_from_addr(&self, curr_addr: usize) -> Option<String> {
         let frame = self

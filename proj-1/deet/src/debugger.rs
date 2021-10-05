@@ -109,16 +109,27 @@ impl Debugger {
                         continue;
                     }
                     
+                    println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
                     if self.inferior.is_some() {
-                        if let Some(orig_byte) = self.inferior.as_mut().unwrap().write_byte(bp_addr, 0xcc).ok() {
-                            self.breakpoints.insert(bp_addr, orig_byte);
-                            println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
-                        } else {
-                            println!("Invalid breakpoint address {:#x}", bp_addr);
-                        }
+                        self.inferior.as_mut().unwrap().set_breakpoint(&mut self.breakpoints, bp_addr);
                     } else {
-                        println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
                         self.breakpoints.insert(bp_addr, 0);
+                    }
+                }
+                DebuggerCommand::Step => {
+                    if self.inferior.is_some() {
+                        self.inferior.as_mut().unwrap().step_in(&self.debug_data, &self.breakpoints);
+                    }
+                }
+                DebuggerCommand::Next => {
+                    if self.inferior.is_some() {
+                        let status = self.inferior.as_mut().unwrap().step_over(&self.debug_data, &mut self.breakpoints);
+                        self.check_status(status);
+                    }
+                }
+                DebuggerCommand::Finish => {
+                    if self.inferior.is_some() {
+                        self.inferior.as_mut().unwrap().step_out(&mut self.breakpoints);
                     }
                 }
             }
