@@ -37,25 +37,27 @@ fn align_addr_to_word(addr: usize) -> usize {
 
 pub struct Inferior {
     child: Child,
+    pub breakpoints: HashMap<usize, u8>
 }
 
 impl Inferior {
     /// Attempts to start a new inferior process. Returns Some(Inferior) if successful, or None if
     /// an error is encountered.
-    pub fn new(target: &str, args: &Vec<String>, breakpoints: &mut HashMap<usize, u8>) -> Option<Inferior> {
+    pub fn new(target: &str, args: &Vec<String>, breakpoints: &HashMap<usize, u8>) -> Option<Inferior> {
         let mut cmd = Command::new(target);
         cmd.args(args);
         unsafe {
             cmd.pre_exec(child_traceme);
         }
-        let child = cmd.spawn().ok()?;
-        let mut inferior = Inferior {child};
+        let mut inferior = Inferior {
+            child: cmd.spawn().ok()?,
+            breakpoints: HashMap::new()
+        };
 
-        let bps = breakpoints.clone();
-        for addr in bps.keys() {
+        for addr in breakpoints.keys() {
             match inferior.write_byte(*addr, 0xcc) {
                 Ok(orig_byte) => {
-                    breakpoints.insert(*addr, orig_byte);
+                    inferior.breakpoints.insert(*addr, orig_byte);
                 },
                 Err(_) => println!("Invalid breakpoint address {:#x}", addr),
             }
@@ -83,21 +85,21 @@ impl Inferior {
         })
     }
 
-    pub fn continue_run(&mut self, breakpoints: &HashMap<usize, u8>) -> Result<Status, nix::Error> {
-        self.step_over_breakpoint(breakpoints);
+    pub fn continue_run(&mut self) -> Result<Status, nix::Error> {
+        self.step_over_breakpoint();
         // resume normal execution
         ptrace::cont(self.pid(), None)?;
         // wait for inferior to stop or terminate
         self.wait(None)
     }
 
-    pub fn set_breakpoint(&mut self, breakpoints: &mut HashMap<usize, u8>, addr: usize) {
+    pub fn set_breakpoint(&mut self, addr: usize) {
         match self.child.try_wait() {
             Ok(None) => {
                 match self.write_byte(addr, 0xcc) {
                     Ok(orig_byte) => {
-                        if !breakpoints.contains_key(&addr) {
-                            breakpoints.insert(addr, orig_byte);
+                        if !self.breakpoints.contains_key(&addr) {
+                            self.breakpoints.insert(addr, orig_byte);
                         }
                     }
                     Err(err) => println!("Failed to set breakpoint at {} with {}", addr, err),
@@ -107,18 +109,20 @@ impl Inferior {
         };
     }
 
-    fn remove_breakpoint(&mut self, breakpoints: &mut HashMap<usize, u8>, addr: usize) {
-        if let Some(orig_byte) = breakpoints.get(&addr) {
+    #[allow(mutable_borrow_reservation_conflict)]
+    fn remove_breakpoint(&mut self, addr: usize) {
+        if let Some(orig_byte) = self.breakpoints.get(&addr) {
             self.write_byte(addr, *orig_byte).unwrap();
-            breakpoints.remove(&addr);
+            self.breakpoints.remove(&addr);
         }
     }
 
-    fn step_over_breakpoint(&mut self, breakpoints: &HashMap<usize, u8>) {
+    #[allow(mutable_borrow_reservation_conflict)]
+    fn step_over_breakpoint(&mut self) {
         let mut regs = ptrace::getregs(self.pid()).unwrap();
         let rip = self.get_rip().unwrap();
         // if stopped at a breakpoint
-        if let Some(orig_byte) = breakpoints.get(&(rip - 1)) {
+        if let Some(orig_byte) = self.breakpoints.get(&(rip - 1)) {
             // restore the first byte of the instruction we replaced
             self.write_byte(rip - 1, *orig_byte).unwrap();
             // rewind the instruction pointer
@@ -133,9 +137,9 @@ impl Inferior {
         }
     }
 
-    fn single_step_instruction(&mut self, breakpoints: &HashMap<usize, u8>) {
-        if breakpoints.contains_key(&self.get_rip().unwrap()) {
-            self.step_over_breakpoint(breakpoints)
+    fn single_step_instruction(&mut self) {
+        if self.breakpoints.contains_key(&self.get_rip().unwrap()) {
+            self.step_over_breakpoint()
         } else {
             ptrace::step(self.pid(), None).unwrap();
             self.wait(None).unwrap();
@@ -147,31 +151,31 @@ impl Inferior {
         Ok(regs.rip as usize)
     }
 
-    pub fn step_in(&mut self, debug_data: &DwarfData, breakpoints: &HashMap<usize, u8>) {
+    pub fn step_in(&mut self, debug_data: &DwarfData) {
         let line = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
         while debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap() == line {
-            self.single_step_instruction(breakpoints);
+            self.single_step_instruction();
         }
         
         let line_entry = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
         self.print_source(&line_entry);
     }
 
-    pub fn step_out(&mut self, breakpoints: &mut HashMap<usize, u8>) {
+    pub fn step_out(&mut self) {
         let regs = ptrace::getregs(self.pid()).unwrap();
         let rbp = regs.rbp;
         let return_address = (rbp + 8) as usize;
 
         let mut should_remove_breakpoint = false;
-        if !breakpoints.contains_key(&return_address) {
-            self.set_breakpoint(breakpoints, return_address);
+        if !self.breakpoints.contains_key(&return_address) {
+            self.set_breakpoint(return_address);
             should_remove_breakpoint = true
         }
 
-        self.continue_run(breakpoints).unwrap();
+        self.continue_run().unwrap();
 
         if should_remove_breakpoint {
-            self.remove_breakpoint(breakpoints, return_address);
+            self.remove_breakpoint(return_address);
         }
     }
 
@@ -188,7 +192,7 @@ impl Inferior {
 
         while load_address < func_end {
             if load_address != start_line.address && !breakpoints.contains_key(&load_address) {
-                self.set_breakpoint(breakpoints, load_address);
+                self.set_breakpoint(load_address);
                 to_delete.push(load_address);
             }
             line_number += 1;
@@ -199,14 +203,14 @@ impl Inferior {
         let rbp = regs.rbp;
         let return_address = (rbp + 8) as usize;
         if !breakpoints.contains_key(&return_address) {
-            self.set_breakpoint(breakpoints, return_address);
+            self.set_breakpoint(return_address);
             to_delete.push(return_address);
         }
 
-        let status = self.continue_run(breakpoints)?;
+        let status = self.continue_run()?;
 
         for addr in to_delete {
-            self.remove_breakpoint(breakpoints, addr)
+            self.remove_breakpoint(addr);
         }
 
         Ok(status)

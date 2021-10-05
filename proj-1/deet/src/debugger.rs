@@ -54,11 +54,11 @@ impl Debugger {
                         self.inferior.as_mut().unwrap().kill();
                         self.inferior = None;
                     }
-                    if let Some(inferior) = Inferior::new(&self.target, &args, &mut self.breakpoints) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         
-                        let status = self.inferior.as_mut().unwrap().continue_run(&self.breakpoints);
+                        let status = self.inferior.as_mut().unwrap().continue_run();
                         self.check_status(status);
                     } else {
                         println!("Error starting subprocess");
@@ -68,7 +68,7 @@ impl Debugger {
                     if self.inferior.is_none() {
                         println!("Error no inferior running");
                     } else {
-                        let status = self.inferior.as_mut().unwrap().continue_run(&self.breakpoints);
+                        let status = self.inferior.as_mut().unwrap().continue_run();
                         self.check_status(status);
                     }
                 }
@@ -109,16 +109,18 @@ impl Debugger {
                         continue;
                     }
                     
-                    println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
+                    
                     if self.inferior.is_some() {
-                        self.inferior.as_mut().unwrap().set_breakpoint(&mut self.breakpoints, bp_addr);
+                        println!("Set breakpoint {} at {:#x}", self.inferior.as_mut().unwrap().breakpoints.len(), bp_addr);
+                        self.inferior.as_mut().unwrap().set_breakpoint(bp_addr);
                     } else {
+                        println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
                         self.breakpoints.insert(bp_addr, 0);
                     }
                 }
                 DebuggerCommand::Step => {
                     if self.inferior.is_some() {
-                        self.inferior.as_mut().unwrap().step_in(&self.debug_data, &self.breakpoints);
+                        self.inferior.as_mut().unwrap().step_in(&self.debug_data);
                     }
                 }
                 DebuggerCommand::Next => {
@@ -129,7 +131,7 @@ impl Debugger {
                 }
                 DebuggerCommand::Finish => {
                     if self.inferior.is_some() {
-                        self.inferior.as_mut().unwrap().step_out(&mut self.breakpoints);
+                        self.inferior.as_mut().unwrap().step_out();
                     }
                 }
             }
