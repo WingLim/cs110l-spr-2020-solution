@@ -5,6 +5,7 @@ use nix::unistd::Pid;
 use std::mem::size_of;
 use std::os::unix::prelude::CommandExt;
 use std::process::{Child, Command};
+use std::collections::HashMap;
 use crate::dwarf_data::DwarfData;
 
 pub enum Status {
@@ -40,7 +41,7 @@ pub struct Inferior {
 impl Inferior {
     /// Attempts to start a new inferior process. Returns Some(Inferior) if successful, or None if
     /// an error is encountered.
-    pub fn new(target: &str, args: &Vec<String>, breakpoints: &Vec<usize>) -> Option<Inferior> {
+    pub fn new(target: &str, args: &Vec<String>, breakpoints: &mut HashMap<usize, u8>) -> Option<Inferior> {
         let mut cmd = Command::new(target);
         cmd.args(args);
         unsafe {
@@ -49,9 +50,12 @@ impl Inferior {
         let child = cmd.spawn().ok()?;
         let mut inferior = Inferior {child};
 
-        for addr in breakpoints {
+        let bps = breakpoints.clone();
+        for addr in bps.keys() {
             match inferior.write_byte(*addr, 0xcc) {
-                Ok(_) => continue,
+                Ok(orig_byte) => {
+                    breakpoints.insert(*addr, orig_byte);
+                },
                 Err(_) => println!("Invalid breakpoint address {:#x}", addr),
             }
         }
@@ -78,8 +82,30 @@ impl Inferior {
         })
     }
 
-    pub fn continue_run(&self) -> Result<Status, nix::Error> {
+    pub fn continue_run(&mut self, breakpoints: &HashMap<usize, u8>) -> Result<Status, nix::Error> {
+        let mut regs = ptrace::getregs(self.pid())?;
+        let rip = regs.rip as usize;
+        // if stopped at a breakpoint
+        if let Some(orig_byte) = breakpoints.get(&(rip - 1)) {
+            // restore the first byte of the instruction we replaced
+            self.write_byte(rip - 1, *orig_byte).unwrap();
+            // rewind the instruction pointer
+            regs.rip = (rip - 1) as u64;
+            ptrace::setregs(self.pid(), regs).unwrap();
+            // go to next instruction
+            ptrace::step(self.pid(), None).unwrap();
+            // wait for inferior to stop due to SIGTRAP
+            match self.wait(None).unwrap() {
+                Status::Stopped(_, _) => {
+                    self.write_byte(rip - 1, 0xcc).unwrap();
+                },
+                Status::Exited(exit_code) => return Ok(Status::Exited(exit_code)),
+                Status::Signaled(signal) => return Ok(Status::Signaled(signal)),
+            }
+        }
+        // resume normal execution
         ptrace::cont(self.pid(), None)?;
+        // wait for inferior to stop or terminate
         self.wait(None)
     }
 
