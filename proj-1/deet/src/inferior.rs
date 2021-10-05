@@ -1,4 +1,4 @@
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, FastFormatter};
+use iced_x86::{Decoder, DecoderOptions, Instruction, FastFormatter};
 use nix::sys::ptrace;
 use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
