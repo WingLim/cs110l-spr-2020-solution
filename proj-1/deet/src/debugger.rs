@@ -81,26 +81,38 @@ impl Debugger {
                     self.inferior.as_mut().unwrap().print_backtrace(&self.debug_data).unwrap();
                 }
                 DebuggerCommand::Breakpoint(location) => {
-                    if !location.starts_with("*") {
-                        println!("Usage: b|break|breakpoint *address");
-                        return;
-                    }
-
-                    if let Some(address) = self.parse_address(&location[1..]) {
-                        if self.inferior.is_some() {
-                            if let Some(orig_byte) = self.inferior.as_mut().unwrap().write_byte(address, 0xcc).ok() {
-                                self.breakpoints.insert(address, orig_byte);
-                                println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), address);
-                            } else {
-                                println!("Invalid breakpoint address {:#x}", address);
-                            }
+                    let bp_addr;
+                    if location.starts_with("*") {
+                        if let Some(address) = self.parse_address(&location[1..]) {
+                            bp_addr = address;
                         } else {
-                            println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), address);
-                            self.breakpoints.insert(address, 0);
+                            println!("Invalid address");
+                            continue;
                         }
-
+                    } else if let Some(line_number) = usize::from_str_radix(&location, 10).ok() {
+                        if let Some(address) = self.debug_data.get_addr_for_line(None, line_number) {
+                            bp_addr = address;
+                        } else {
+                            println!("Invalid line number");
+                            continue;
+                        }
+                    } else if let Some(address) = self.debug_data.get_addr_for_function(None, &location) {
+                        bp_addr = address;
                     } else {
-                        println!("Invallid address");
+                        println!("Usage: b|break|breakpoint *address|line|func");
+                        continue;
+                    }
+                    
+                    if self.inferior.is_some() {
+                        if let Some(orig_byte) = self.inferior.as_mut().unwrap().write_byte(bp_addr, 0xcc).ok() {
+                            self.breakpoints.insert(bp_addr, orig_byte);
+                            println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
+                        } else {
+                            println!("Invalid breakpoint address {:#x}", bp_addr);
+                        }
+                    } else {
+                        println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp_addr);
+                        self.breakpoints.insert(bp_addr, 0);
                     }
                 }
             }
