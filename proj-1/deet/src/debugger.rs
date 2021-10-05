@@ -65,11 +65,11 @@ impl Debugger {
                     }
                 }
                 DebuggerCommand::Continue => {
-                    if self.inferior.is_none() {
-                        println!("Error no inferior running");
-                    } else {
+                    if self.inferior.is_some() {
                         let status = self.inferior.as_mut().unwrap().continue_run();
                         self.check_status(status);
+                    } else {
+                        println!("Error no inferior running");
                     }
                 }
                 DebuggerCommand::Quit => {
@@ -121,17 +121,23 @@ impl Debugger {
                 DebuggerCommand::Step => {
                     if self.inferior.is_some() {
                         self.inferior.as_mut().unwrap().step_in(&self.debug_data);
+                    } else {
+                        println!("Error no inferior running");
                     }
                 }
                 DebuggerCommand::Next => {
                     if self.inferior.is_some() {
                         let status = self.inferior.as_mut().unwrap().step_over(&self.debug_data, &mut self.breakpoints);
                         self.check_status(status);
+                    } else {
+                        println!("Error no inferior running");
                     }
                 }
                 DebuggerCommand::Finish => {
                     if self.inferior.is_some() {
                         self.inferior.as_mut().unwrap().step_out();
+                    } else {
+                        println!("Error no inferior running");
                     }
                 }
             }
