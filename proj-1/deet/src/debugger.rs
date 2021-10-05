@@ -137,6 +137,7 @@ impl Debugger {
                 let line = self.debug_data.get_line_from_addr(rip).unwrap();
                 let func = self.debug_data.get_function_from_addr(rip).unwrap();
                 println!("Stopped at {} ({})", func, line);
+                self.inferior.as_mut().unwrap().print_source(&line);
             },
             Status::Exited(exit_code) => {
                 println!("Child exited (status {})", exit_code);

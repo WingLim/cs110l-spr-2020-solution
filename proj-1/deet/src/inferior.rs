@@ -2,11 +2,12 @@ use nix::sys::ptrace;
 use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
+use std::fs;
 use std::mem::size_of;
 use std::os::unix::prelude::CommandExt;
 use std::process::{Child, Command};
 use std::collections::HashMap;
-use crate::dwarf_data::DwarfData;
+use crate::dwarf_data::{DwarfData, Line};
 
 pub enum Status {
     /// Indicates inferior stopped. Contains the signal that stopped the process, as well as the
@@ -134,6 +135,17 @@ impl Inferior {
         }
 
         Ok(())
+    }
+
+    pub fn print_source(&self, line: &Line) {
+        let file = line.file.clone();
+        let (_, path) = file.match_indices("/").nth(1).map(|(index, _)| file.split_at(index + 1)).unwrap();
+        
+        let source = fs::read_to_string(path).unwrap();
+        
+        let line = source.lines().nth(line.number).unwrap();
+
+        println!("{}", line);
     }
 
     pub fn write_byte(&mut self, addr: usize, val: u8) -> Result<u8, nix::Error> {
