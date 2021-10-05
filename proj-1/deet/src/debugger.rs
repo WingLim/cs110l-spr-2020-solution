@@ -73,8 +73,10 @@ impl Debugger {
                     }
                 }
                 DebuggerCommand::Quit => {
-                    self.inferior.as_mut().unwrap().kill();
-                    self.inferior = None;
+                    if self.inferior.is_some() {
+                        self.inferior.as_mut().unwrap().kill();
+                        self.inferior = None;
+                    }
                     return;
                 }
                 DebuggerCommand::Backtrace => {
