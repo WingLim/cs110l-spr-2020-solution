@@ -3,6 +3,7 @@ use crate::inferior::{Inferior, Status};
 use crate::dwarf_data::{DwarfData, Error as DwarfError};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use std::collections::HashMap;
 
 pub struct Debugger {
     target: String,
@@ -10,7 +11,7 @@ pub struct Debugger {
     readline: Editor<()>,
     inferior: Option<Inferior>,
     debug_data: DwarfData,
-    breakpoints: Vec<usize>
+    breakpoints: HashMap<usize, u8>
 }
 
 impl Debugger {
@@ -33,7 +34,7 @@ impl Debugger {
         let mut readline = Editor::<()>::new();
         // Attempt to load history from ~/.deet_history if it exists
         let _ = readline.load_history(&history_path);
-        let breakpoints: Vec<usize> = Vec::new();
+        let breakpoints = HashMap::new();
 
         Debugger {
             target: target.to_string(),
@@ -53,11 +54,11 @@ impl Debugger {
                         self.inferior.as_mut().unwrap().kill();
                         self.inferior = None;
                     }
-                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &mut self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         
-                        let status = self.inferior.as_mut().unwrap().continue_run();
+                        let status = self.inferior.as_mut().unwrap().continue_run(&self.breakpoints);
                         self.check_status(status);
                     } else {
                         println!("Error starting subprocess");
@@ -67,7 +68,7 @@ impl Debugger {
                     if self.inferior.is_none() {
                         println!("Error no subprocess running");
                     } else {
-                        let status = self.inferior.as_mut().unwrap().continue_run();
+                        let status = self.inferior.as_mut().unwrap().continue_run(&self.breakpoints);
                         self.check_status(status);
                     }
                 }
@@ -87,13 +88,17 @@ impl Debugger {
 
                     if let Some(address) = self.parse_address(&location[1..]) {
                         if self.inferior.is_some() {
-                            if self.inferior.as_mut().unwrap().write_byte(address, 0xcc).ok().is_none() {
-                                return;
+                            if let Some(orig_byte) = self.inferior.as_mut().unwrap().write_byte(address, 0xcc).ok() {
+                                self.breakpoints.insert(address, orig_byte);
+                                println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), address);
+                            } else {
+                                println!("Invalid breakpoint address {:#x}", address);
                             }
+                        } else {
+                            println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), address);
+                            self.breakpoints.insert(address, 0);
                         }
 
-                        self.breakpoints.push(address);
-                        println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), address);
                     } else {
                         println!("Invallid address");
                     }
