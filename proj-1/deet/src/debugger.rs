@@ -66,7 +66,7 @@ impl Debugger {
                 }
                 DebuggerCommand::Continue => {
                     if self.inferior.is_none() {
-                        println!("Error no subprocess running");
+                        println!("Error no inferior running");
                     } else {
                         let status = self.inferior.as_mut().unwrap().continue_run(&self.breakpoints);
                         self.check_status(status);
@@ -80,7 +80,11 @@ impl Debugger {
                     return;
                 }
                 DebuggerCommand::Backtrace => {
-                    self.inferior.as_mut().unwrap().print_backtrace(&self.debug_data).unwrap();
+                    if self.inferior.is_some() {
+                        self.inferior.as_mut().unwrap().print_backtrace(&self.debug_data).unwrap();
+                    } else {
+                        println!("Error no inferior running")
+                    }
                 }
                 DebuggerCommand::Breakpoint(location) => {
                     let bp_addr;
