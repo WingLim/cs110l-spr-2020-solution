@@ -4,6 +4,9 @@ pub enum DebuggerCommand {
     Continue,
     Backtrace,
     Breakpoint(String),
+    Step,
+    Next,
+    Finish
 }
 
 impl DebuggerCommand {
@@ -19,6 +22,9 @@ impl DebuggerCommand {
             "c" | "cont" | "continue" => Some(DebuggerCommand::Continue),
             "bt" | "back" | "backtrace" => Some(DebuggerCommand::Backtrace),
             "b" | "break" => Some(DebuggerCommand::Breakpoint(tokens[1].to_string())),
+            "s" | "step" => Some(DebuggerCommand::Step),
+            "n" | "next" => Some(DebuggerCommand::Next),
+            "fin" | "finish" => Some(DebuggerCommand::Finish),
             // Default case:
             _ => None,
         }

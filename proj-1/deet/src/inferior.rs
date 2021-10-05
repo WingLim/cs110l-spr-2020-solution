@@ -84,8 +84,39 @@ impl Inferior {
     }
 
     pub fn continue_run(&mut self, breakpoints: &HashMap<usize, u8>) -> Result<Status, nix::Error> {
-        let mut regs = ptrace::getregs(self.pid())?;
-        let rip = regs.rip as usize;
+        self.step_over_breakpoint(breakpoints);
+        // resume normal execution
+        ptrace::cont(self.pid(), None)?;
+        // wait for inferior to stop or terminate
+        self.wait(None)
+    }
+
+    pub fn set_breakpoint(&mut self, breakpoints: &mut HashMap<usize, u8>, addr: usize) {
+        match self.child.try_wait() {
+            Ok(None) => {
+                match self.write_byte(addr, 0xcc) {
+                    Ok(orig_byte) => {
+                        if !breakpoints.contains_key(&addr) {
+                            breakpoints.insert(addr, orig_byte);
+                        }
+                    }
+                    Err(err) => println!("Failed to set breakpoint at {} with {}", addr, err),
+                }
+            },
+            _ => {},
+        };
+    }
+
+    fn remove_breakpoint(&mut self, breakpoints: &mut HashMap<usize, u8>, addr: usize) {
+        if let Some(orig_byte) = breakpoints.get(&addr) {
+            self.write_byte(addr, *orig_byte).unwrap();
+            breakpoints.remove(&addr);
+        }
+    }
+
+    fn step_over_breakpoint(&mut self, breakpoints: &HashMap<usize, u8>) {
+        let mut regs = ptrace::getregs(self.pid()).unwrap();
+        let rip = self.get_rip().unwrap();
         // if stopped at a breakpoint
         if let Some(orig_byte) = breakpoints.get(&(rip - 1)) {
             // restore the first byte of the instruction we replaced
@@ -96,18 +127,89 @@ impl Inferior {
             // go to next instruction
             ptrace::step(self.pid(), None).unwrap();
             // wait for inferior to stop due to SIGTRAP
-            match self.wait(None).unwrap() {
-                Status::Stopped(_, _) => {
-                    self.write_byte(rip - 1, 0xcc).unwrap();
-                },
-                Status::Exited(exit_code) => return Ok(Status::Exited(exit_code)),
-                Status::Signaled(signal) => return Ok(Status::Signaled(signal)),
-            }
+            self.wait(None).unwrap();
+            // restore 0xcc in the breakpoint location
+            self.write_byte(rip - 1, 0xcc).unwrap();
         }
-        // resume normal execution
-        ptrace::cont(self.pid(), None)?;
-        // wait for inferior to stop or terminate
-        self.wait(None)
+    }
+
+    fn single_step_instruction(&mut self, breakpoints: &HashMap<usize, u8>) {
+        if breakpoints.contains_key(&self.get_rip().unwrap()) {
+            self.step_over_breakpoint(breakpoints)
+        } else {
+            ptrace::step(self.pid(), None).unwrap();
+            self.wait(None).unwrap();
+        }
+    }
+
+    fn get_rip(&self) -> Result<usize, nix::Error> {
+        let regs = ptrace::getregs(self.pid())?;
+        Ok(regs.rip as usize)
+    }
+
+    pub fn step_in(&mut self, debug_data: &DwarfData, breakpoints: &HashMap<usize, u8>) {
+        let line = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
+        while debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap() == line {
+            self.single_step_instruction(breakpoints);
+        }
+        
+        let line_entry = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
+        self.print_source(&line_entry);
+    }
+
+    pub fn step_out(&mut self, breakpoints: &mut HashMap<usize, u8>) {
+        let regs = ptrace::getregs(self.pid()).unwrap();
+        let rbp = regs.rbp;
+        let return_address = (rbp + 8) as usize;
+
+        let mut should_remove_breakpoint = false;
+        if !breakpoints.contains_key(&return_address) {
+            self.set_breakpoint(breakpoints, return_address);
+            should_remove_breakpoint = true
+        }
+
+        self.continue_run(breakpoints).unwrap();
+
+        if should_remove_breakpoint {
+            self.remove_breakpoint(breakpoints, return_address);
+        }
+    }
+
+    pub fn step_over(&mut self, debug_data: &DwarfData, breakpoints: &mut HashMap<usize, u8>) -> Result<Status, nix::Error> {
+        let func = debug_data.get_function(self.get_rip().unwrap()).unwrap();
+        let func_entry = func.address;
+        let func_end = func.address + func.text_length;
+
+        let line = debug_data.get_line_from_addr(func_entry).unwrap();
+        let mut line_number = line.number;
+        let mut load_address = line.address;
+        let start_line = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
+        let mut to_delete = Vec::new();
+
+        while load_address < func_end {
+            if load_address != start_line.address && !breakpoints.contains_key(&load_address) {
+                self.set_breakpoint(breakpoints, load_address);
+                to_delete.push(load_address);
+            }
+            line_number += 1;
+            load_address = debug_data.get_addr_for_line(None, line_number).unwrap();
+        }
+
+        let regs = ptrace::getregs(self.pid())?;
+        let rbp = regs.rbp;
+        let return_address = (rbp + 8) as usize;
+        if !breakpoints.contains_key(&return_address) {
+            self.set_breakpoint(breakpoints, return_address);
+            to_delete.push(return_address);
+        }
+
+        let status = self.continue_run(breakpoints)?;
+
+        for addr in to_delete {
+            self.remove_breakpoint(breakpoints, addr)
+        }
+
+        Ok(status)
     }
 
     pub fn kill(&mut self) {
@@ -143,7 +245,7 @@ impl Inferior {
         
         let source = fs::read_to_string(path).unwrap();
         
-        let line = source.lines().nth(line.number).unwrap();
+        let line = source.lines().nth(line.number - 1).unwrap();
 
         println!("{}", line);
     }
