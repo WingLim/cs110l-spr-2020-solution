@@ -10,12 +10,12 @@ pub struct Debugger {
     readline: Editor<()>,
     inferior: Option<Inferior>,
     debug_data: DwarfData,
+    breakpoints: Vec<usize>
 }
 
 impl Debugger {
     /// Initializes the debugger.
     pub fn new(target: &str) -> Debugger {
-        // TODO (milestone 3): initialize the DwarfData
         let debug_data = match DwarfData::from_file(target) {
             Ok(val) => val,
             Err(DwarfError::ErrorOpeningFile) => {
@@ -27,11 +27,13 @@ impl Debugger {
                 std::process::exit(1);
             }
         };
+        debug_data.print();
 
         let history_path = format!("{}/.deet_history", std::env::var("HOME").unwrap());
         let mut readline = Editor::<()>::new();
         // Attempt to load history from ~/.deet_history if it exists
         let _ = readline.load_history(&history_path);
+        let breakpoints: Vec<usize> = Vec::new();
 
         Debugger {
             target: target.to_string(),
@@ -39,6 +41,7 @@ impl Debugger {
             readline,
             inferior: None,
             debug_data,
+            breakpoints
         }
     }
 
@@ -50,7 +53,7 @@ impl Debugger {
                         self.inferior.as_mut().unwrap().kill();
                         self.inferior = None;
                     }
-                    if let Some(inferior) = Inferior::new(&self.target, &args) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         
@@ -76,8 +79,36 @@ impl Debugger {
                 DebuggerCommand::Backtrace => {
                     self.inferior.as_mut().unwrap().print_backtrace(&self.debug_data).unwrap();
                 }
+                DebuggerCommand::Breakpoint(location) => {
+                    if !location.starts_with("*") {
+                        println!("Usage: b|break|breakpoint *address");
+                        return;
+                    }
+
+                    if let Some(address) = self.parse_address(&location[1..]) {
+                        if self.inferior.is_some() {
+                            if self.inferior.as_mut().unwrap().write_byte(address, 0xcc).ok().is_none() {
+                                return;
+                            }
+                        }
+
+                        self.breakpoints.push(address);
+                        println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), address);
+                    } else {
+                        println!("Invallid address");
+                    }
+                }
             }
         }
+    }
+
+    fn parse_address(&self, addr: &str) -> Option<usize> {
+        let addr_without_0x = if addr.to_lowercase().starts_with("0x") {
+            &addr[2..]
+        } else {
+            &addr
+        };
+        usize::from_str_radix(addr_without_0x, 16).ok()
     }
 
     fn check_status(&mut self, status: Result<Status, nix::Error>) {
