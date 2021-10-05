@@ -249,14 +249,12 @@ impl Inferior {
     }
 
     pub fn print_source(&self, line: &Line) {
-        let file = line.file.clone();
-        let (_, path) = file.match_indices("/").nth(1).map(|(index, _)| file.split_at(index + 1)).unwrap();
-        
-        let source = fs::read_to_string(path).unwrap();
-        
-        let line = source.lines().nth(line.number - 1).unwrap();
+        let path = line.file.clone();
+        if let Ok(source) = fs::read_to_string(path) {
+            let line = source.lines().nth(line.number - 1).unwrap();
 
-        println!("{}", line);
+            println!("{}", line);
+        }
     }
 
     pub fn print_assembly(&self, addr: usize) {
