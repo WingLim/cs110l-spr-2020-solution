@@ -1,3 +1,4 @@
+use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, FastFormatter};
 use nix::sys::ptrace;
 use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -158,7 +159,11 @@ impl Inferior {
         }
         
         let line_entry = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
-        self.print_source(&line_entry);
+        if line_entry.number == line.number {
+            self.print_assembly(line_entry.address);
+        } else {
+            self.print_source(&line_entry);
+        }
     }
 
     pub fn step_out(&mut self) {
@@ -252,6 +257,23 @@ impl Inferior {
         let line = source.lines().nth(line.number - 1).unwrap();
 
         println!("{}", line);
+    }
+
+    pub fn print_assembly(&self, addr: usize) {
+        let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
+        let bytes = data.to_ne_bytes();
+        let mut decoder = Decoder::new(64, &bytes, DecoderOptions::NONE);
+        let mut formatter = FastFormatter::new();
+        let mut output = String::new();
+        let mut instruction = Instruction::default();
+
+        while decoder.can_decode() {
+            decoder.decode_out(&mut instruction);
+            output.clear();
+            formatter.format(&instruction, &mut output);
+
+            println!(" {}", output);
+        }
     }
 
     pub fn write_byte(&mut self, addr: usize, val: u8) -> Result<u8, nix::Error> {
