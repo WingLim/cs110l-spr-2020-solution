@@ -2,7 +2,7 @@ use nix::sys::ptrace;
 use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
-use core::mem::size_of;
+use std::mem::size_of;
 use std::os::unix::prelude::CommandExt;
 use std::process::{Child, Command};
 use crate::dwarf_data::DwarfData;
