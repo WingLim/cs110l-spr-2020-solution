@@ -6,6 +6,7 @@ use nix::unistd::Pid;
 use std::convert::TryInto;
 use std::fs;
 use std::mem::size_of;
+use std::ops::BitAnd;
 use std::os::unix::prelude::CommandExt;
 use std::process::{Child, Command};
 use std::collections::HashMap;
@@ -287,26 +288,25 @@ impl Inferior {
                 addr = ((rbp as isize) + offset + 16) as usize;
             },
         }
+        let raw_data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
         match var.entity_type.name.as_str() {
             "int" => {
-                let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
-                let data_32 = (data & 0xFFFFFFFF) as i32;
-                println!("{} :{} = {}", name, var.entity_type, data_32);
-            }
-            "long int" => {
-                let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
+                let data = raw_data.bitand(0xFFFFFFFF) as i32;
                 println!("{} :{} = {}", name, var.entity_type, data);
             }
+            "long int" => {
+                println!("{} :{} = {}", name, var.entity_type, raw_data);
+            }
             "float" => {
-                let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
-                let mut data_32_bytes = Vec::new();
-                for b in (data & 0xFFFFFFFF).to_be_bytes() {
-                    if b != 0 {
-                        data_32_bytes.push(b);
-                    }
-                }
-                let data_32 = f32::from_be_bytes(data_32_bytes.try_into().unwrap());
-                println!("{} :{} = {}", name, var.entity_type, data_32);
+                let mut data_32_bytes = raw_data.bitand(0xFFFFFFFF).to_be_bytes().to_vec();
+                data_32_bytes.retain(|&x| x != 0);
+                let data = f32::from_be_bytes(data_32_bytes.try_into().unwrap());
+                println!("{} :{} = {}", name, var.entity_type, data);
+            }
+            "double" => {
+                let data_bytes = raw_data.to_be_bytes().to_vec();
+                let data = f64::from_be_bytes(data_bytes.try_into().unwrap());
+                println!("{} :{} = {}", name, var.entity_type, data);
             }
             _ => {
                 println!("Error type: \"{}\" not support yet.", var.entity_type);
