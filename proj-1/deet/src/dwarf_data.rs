@@ -111,6 +111,14 @@ impl DwarfData {
         None
     }
 
+    pub fn get_global_variables(&self) -> Vec<&Variable> {
+        let mut variables = Vec::new();
+        for file in &self.files {
+            variables.extend(file.global_variables.iter())
+        }
+        variables
+    }
+
     #[allow(dead_code)]
     pub fn get_function_from_addr(&self, curr_addr: usize) -> Option<String> {
         let frame = self
@@ -168,9 +176,15 @@ pub struct Type {
 impl Type {
     pub fn new(name: String, size: usize) -> Self {
         Type {
-            name: name,
-            size: size,
+            name,
+            size
         }
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 

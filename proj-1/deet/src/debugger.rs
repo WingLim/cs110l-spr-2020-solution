@@ -140,6 +140,13 @@ impl Debugger {
                         println!("Error no inferior running");
                     }
                 }
+                DebuggerCommand::Print(name) => {
+                    if self.inferior.is_some() {
+                        self.inferior.as_mut().unwrap().print_variable(&self.debug_data, name);
+                    } else {
+                        println!("Error no inferior running");
+                    }
+                }
             }
         }
     }
