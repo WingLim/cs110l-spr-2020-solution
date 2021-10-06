@@ -8,7 +8,7 @@ use std::mem::size_of;
 use std::os::unix::prelude::CommandExt;
 use std::process::{Child, Command};
 use std::collections::HashMap;
-use crate::dwarf_data::{DwarfData, Line};
+use crate::dwarf_data::{DwarfData, Line, Location, Variable};
 
 pub enum Status {
     /// Indicates inferior stopped. Contains the signal that stopped the process, as well as the
@@ -271,6 +271,45 @@ impl Inferior {
             formatter.format(&instruction, &mut output);
 
             println!(" {}", output);
+        }
+    }
+
+    fn get_variable_value(&self, var: &Variable) -> i64 {
+        match var.location {
+            Location::Address(addr) => {
+                ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap()
+            },
+            Location::FramePointerOffset(offset) => {
+                let regs = ptrace::getregs(self.pid()).unwrap();
+                let rbp = regs.rbp;
+                let addr = (rbp as isize) + offset + 16;
+                let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
+                let data_32 = (data & 0xFFFFFFFF) as i32;
+                data_32 as i64
+            },
+        }
+    }
+
+    pub fn print_variable(&self, debug_data: &DwarfData, name: String) {
+        let rip = self.get_rip().unwrap();
+        let func = debug_data.get_function(rip).unwrap();
+        let mut have_var = false;
+        for var in func.variables {
+            if var.name == name {
+                have_var = true;
+                let data = self.get_variable_value(&var);
+                println!("{}: {} = {}", var.name, var.entity_type, data);
+            }
+        }
+        for var in debug_data.get_global_variables() {
+            if var.name == name {
+                have_var = true;
+                let data = self.get_variable_value(var);
+                println!("{}: {} = {}", var.name, var.entity_type, data);
+            }
+        }
+        if !have_var {
+            println!("Error no such variable");
         }
     }
 

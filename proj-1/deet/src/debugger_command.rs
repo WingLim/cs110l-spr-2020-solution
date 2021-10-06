@@ -6,7 +6,8 @@ pub enum DebuggerCommand {
     Breakpoint(String),
     Step,
     Next,
-    Finish
+    Finish,
+    Print(String)
 }
 
 impl DebuggerCommand {
@@ -25,6 +26,7 @@ impl DebuggerCommand {
             "s" | "step" => Some(DebuggerCommand::Step),
             "n" | "next" => Some(DebuggerCommand::Next),
             "fin" | "finish" => Some(DebuggerCommand::Finish),
+            "p" | "print" => Some(DebuggerCommand::Print(tokens.get(1).unwrap_or(&"").to_string())),
             // Default case:
             _ => None,
         }
