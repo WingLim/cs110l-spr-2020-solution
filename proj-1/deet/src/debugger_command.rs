@@ -22,7 +22,7 @@ impl DebuggerCommand {
             },
             "c" | "cont" | "continue" => Some(DebuggerCommand::Continue),
             "bt" | "back" | "backtrace" => Some(DebuggerCommand::Backtrace),
-            "b" | "break" => Some(DebuggerCommand::Breakpoint(tokens[1].to_string())),
+            "b" | "break" => Some(DebuggerCommand::Breakpoint(tokens.get(1).unwrap_or(&"").to_string())),
             "s" | "step" => Some(DebuggerCommand::Step),
             "n" | "next" => Some(DebuggerCommand::Next),
             "fin" | "finish" => Some(DebuggerCommand::Finish),
