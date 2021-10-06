@@ -274,19 +274,31 @@ impl Inferior {
         }
     }
 
-    fn get_variable_value(&self, var: &Variable) -> i64 {
+    fn get_variable_value(&self, var: &Variable, name: &String) {
+        let addr;
         match var.location {
-            Location::Address(addr) => {
-                ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap()
+            Location::Address(address) => {
+                addr = address;
             },
             Location::FramePointerOffset(offset) => {
                 let regs = ptrace::getregs(self.pid()).unwrap();
                 let rbp = regs.rbp;
-                let addr = (rbp as isize) + offset + 16;
+                addr = ((rbp as isize) + offset + 16) as usize;
+            },
+        }
+        match var.entity_type.name.as_str() {
+            "int" => {
                 let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
                 let data_32 = (data & 0xFFFFFFFF) as i32;
-                data_32 as i64
-            },
+                println!("{} :{} = {}", name, var.entity_type, data_32);
+            }
+            "long int" => {
+                let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
+                println!("{} :{} = {}", name, var.entity_type, data);
+            }
+            _ => {
+                println!("Error type: \"{}\" not support yet.", var.entity_type);
+            }
         }
     }
 
@@ -294,18 +306,16 @@ impl Inferior {
         let rip = self.get_rip().unwrap();
         let func = debug_data.get_function(rip).unwrap();
         let mut have_var = false;
-        for var in func.variables {
+        for var in &func.variables {
             if var.name == name {
                 have_var = true;
-                let data = self.get_variable_value(&var);
-                println!("{}: {} = {}", var.name, var.entity_type, data);
+                self.get_variable_value(var, &name);
             }
         }
         for var in debug_data.get_global_variables() {
             if var.name == name {
                 have_var = true;
-                let data = self.get_variable_value(var);
-                println!("{}: {} = {}", var.name, var.entity_type, data);
+                self.get_variable_value(var, &name);
             }
         }
         if !have_var {
