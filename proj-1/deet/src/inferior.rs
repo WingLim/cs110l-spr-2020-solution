@@ -3,6 +3,7 @@ use nix::sys::ptrace;
 use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
+use std::convert::TryInto;
 use std::fs;
 use std::mem::size_of;
 use std::os::unix::prelude::CommandExt;
@@ -295,6 +296,17 @@ impl Inferior {
             "long int" => {
                 let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
                 println!("{} :{} = {}", name, var.entity_type, data);
+            }
+            "float" => {
+                let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
+                let mut data_32_bytes = Vec::new();
+                for b in (data & 0xFFFFFFFF).to_be_bytes() {
+                    if b != 0 {
+                        data_32_bytes.push(b);
+                    }
+                }
+                let data_32 = f32::from_be_bytes(data_32_bytes.try_into().unwrap());
+                println!("{} :{} = {}", name, var.entity_type, data_32);
             }
             _ => {
                 println!("Error type: \"{}\" not support yet.", var.entity_type);
