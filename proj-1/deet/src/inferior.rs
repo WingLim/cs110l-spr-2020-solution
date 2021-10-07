@@ -171,7 +171,7 @@ impl Inferior {
     pub fn step_out(&mut self) {
         let regs = ptrace::getregs(self.pid()).unwrap();
         let rbp = regs.rbp;
-        let return_address = (rbp + 8) as usize;
+        let return_address = ptrace::read(self.pid(), (rbp + 8) as ptrace::AddressType).unwrap() as usize;
 
         let mut should_remove_breakpoint = false;
         if !self.breakpoints.contains_key(&return_address) {
