@@ -167,7 +167,7 @@ impl Inferior {
         self.print_source(&line_entry);
     }
 
-    pub fn step_out(&mut self) {
+    pub fn step_out(&mut self) -> Result<Status, nix::Error> {
         let regs = ptrace::getregs(self.pid()).unwrap();
         let rbp = regs.rbp;
         let return_address = ptrace::read(self.pid(), (rbp + 8) as ptrace::AddressType).unwrap() as usize;
@@ -178,11 +178,13 @@ impl Inferior {
             should_remove_breakpoint = true
         }
 
-        self.continue_run().unwrap();
+        let status = self.continue_run()?;
 
         if should_remove_breakpoint {
             self.remove_breakpoint(return_address);
         }
+
+        Ok(status)
     }
 
     pub fn step_over(&mut self, debug_data: &DwarfData) -> Result<Status, nix::Error> {
@@ -252,9 +254,9 @@ impl Inferior {
     pub fn print_source(&self, line: &Line) {
         let path = line.file.clone();
         if let Ok(source) = fs::read_to_string(path) {
-            let line = source.lines().nth(line.number - 1).unwrap();
+            let line_content = source.lines().nth(line.number - 1).unwrap();
 
-            println!("{}", line);
+            println!("\n{}{}", line.number, line_content);
         }
     }
 

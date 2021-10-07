@@ -135,7 +135,8 @@ impl Debugger {
                 }
                 DebuggerCommand::Finish => {
                     if self.inferior.is_some() {
-                        self.inferior.as_mut().unwrap().step_out();
+                        let status = self.inferior.as_mut().unwrap().step_out();
+                        self.check_status(status);
                     } else {
                         println!("Error no inferior running");
                     }
