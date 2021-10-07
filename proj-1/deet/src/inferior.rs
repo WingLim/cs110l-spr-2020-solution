@@ -186,7 +186,7 @@ impl Inferior {
         }
     }
 
-    pub fn step_over(&mut self, debug_data: &DwarfData, breakpoints: &mut HashMap<usize, u8>) -> Result<Status, nix::Error> {
+    pub fn step_over(&mut self, debug_data: &DwarfData) -> Result<Status, nix::Error> {
         let func = debug_data.get_function(self.get_rip().unwrap()).unwrap();
         let func_entry = func.address;
         let func_end = func.address + func.text_length;
@@ -198,7 +198,7 @@ impl Inferior {
         let mut to_delete = Vec::new();
 
         while load_address < func_end {
-            if load_address != start_line.address && !breakpoints.contains_key(&load_address) {
+            if load_address != start_line.address && !self.breakpoints.contains_key(&load_address) {
                 self.set_breakpoint(load_address);
                 to_delete.push(load_address);
             }
@@ -209,7 +209,7 @@ impl Inferior {
         let regs = ptrace::getregs(self.pid())?;
         let rbp = regs.rbp;
         let return_address = (rbp + 8) as usize;
-        if !breakpoints.contains_key(&return_address) {
+        if !self.breakpoints.contains_key(&return_address) {
             self.set_breakpoint(return_address);
             to_delete.push(return_address);
         }
