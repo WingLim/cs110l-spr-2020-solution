@@ -1,6 +1,6 @@
-# DEET
+# The DEET Debugger
 
-Dodgy Eliminator of Errors and Tragedies.
+DEET aka Dodgy Eliminator of Errors and Tragedies.
 
 Instruction: [https://reberhardt.com/cs110l/spring-2020/assignments/project-1/](https://reberhardt.com/cs110l/spring-2020/assignments/project-1/)
 
@@ -25,3 +25,4 @@ Instruction: [https://reberhardt.com/cs110l/spring-2020/assignments/project-1/](
   - int
   - long int
   - float
+  - double
