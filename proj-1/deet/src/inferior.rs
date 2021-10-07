@@ -1,4 +1,3 @@
-use iced_x86::{Decoder, DecoderOptions, Instruction, FastFormatter};
 use nix::sys::ptrace;
 use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -156,16 +155,17 @@ impl Inferior {
 
     pub fn step_in(&mut self, debug_data: &DwarfData) {
         let line = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
-        while debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap() == line {
+
+        while debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap_or(Line {
+            file: "".to_string(),
+            number: line.number,
+            address: 0
+        }).number == line.number {
             self.single_step_instruction();
         }
-        
+
         let line_entry = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
-        if line_entry.number == line.number {
-            self.print_assembly(line_entry.address);
-        } else {
-            self.print_source(&line_entry);
-        }
+        self.print_source(&line_entry);
     }
 
     pub fn step_out(&mut self) {
@@ -256,23 +256,6 @@ impl Inferior {
             let line = source.lines().nth(line.number - 1).unwrap();
 
             println!("{}", line);
-        }
-    }
-
-    pub fn print_assembly(&self, addr: usize) {
-        let data = ptrace::read(self.pid(), addr as ptrace::AddressType).unwrap();
-        let bytes = data.to_ne_bytes();
-        let mut decoder = Decoder::new(64, &bytes, DecoderOptions::NONE);
-        let mut formatter = FastFormatter::new();
-        let mut output = String::new();
-        let mut instruction = Instruction::default();
-
-        while decoder.can_decode() {
-            decoder.decode_out(&mut instruction);
-            output.clear();
-            formatter.format(&instruction, &mut output);
-
-            println!(" {}", output);
         }
     }
 
