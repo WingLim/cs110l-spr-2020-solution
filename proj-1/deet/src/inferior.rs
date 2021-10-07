@@ -96,26 +96,25 @@ impl Inferior {
     }
 
     pub fn set_breakpoint(&mut self, addr: usize) {
-        match self.child.try_wait() {
-            Ok(None) => {
-                match self.write_byte(addr, 0xcc) {
-                    Ok(orig_byte) => {
-                        if !self.breakpoints.contains_key(&addr) {
-                            self.breakpoints.insert(addr, orig_byte);
-                        }
-                    }
-                    Err(err) => println!("Failed to set breakpoint at {} with {}", addr, err),
+        match self.write_byte(addr, 0xcc) {
+            Ok(orig_byte) => {
+                if !self.breakpoints.contains_key(&addr) {
+                    self.breakpoints.insert(addr, orig_byte);
                 }
-            },
-            _ => {},
-        };
+            }
+            Err(err) => println!("Error set breakpoint at {} with {}", addr, err),
+        }
     }
 
     #[allow(mutable_borrow_reservation_conflict)]
     fn remove_breakpoint(&mut self, addr: usize) {
         if let Some(orig_byte) = self.breakpoints.get(&addr) {
-            self.write_byte(addr, *orig_byte).unwrap();
-            self.breakpoints.remove(&addr);
+            match self.write_byte(addr, *orig_byte) {
+                Ok(_) => {
+                    self.breakpoints.remove(&addr);
+                }
+                Err(err) => println!("Error remove breakpoint at {} with {}", addr, err)
+            }
         }
     }
 
