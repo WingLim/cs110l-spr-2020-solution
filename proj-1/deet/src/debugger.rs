@@ -164,10 +164,15 @@ impl Debugger {
         match status.unwrap() {
             Status::Stopped(signal, rip) => {
                 println!("Child stopped (signal {})", signal);
-                let line = self.debug_data.get_line_from_addr(rip).unwrap();
-                let func = self.debug_data.get_function_from_addr(rip).unwrap();
-                println!("Stopped at {} ({})", func, line);
-                self.inferior.as_mut().unwrap().print_source(&line);
+                match self.debug_data.get_line_from_addr(rip) {
+                    Some(line) => {
+                        println!("Stopped at {}", line);
+                        self.inferior.as_mut().unwrap().print_source(&line);
+                    },
+                    None => {
+                        println!("Stopped at {:#x}", rip)
+                    },
+                }
             },
             Status::Exited(exit_code) => {
                 println!("Child exited (status {})", exit_code);
