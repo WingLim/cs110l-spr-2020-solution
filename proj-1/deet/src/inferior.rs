@@ -207,7 +207,7 @@ impl Inferior {
 
         let regs = ptrace::getregs(self.pid())?;
         let rbp = regs.rbp;
-        let return_address = (rbp + 8) as usize;
+        let return_address = ptrace::read(self.pid(), (rbp + 8) as ptrace::AddressType).unwrap() as usize;
         if !self.breakpoints.contains_key(&return_address) {
             self.set_breakpoint(return_address);
             to_delete.push(return_address);
