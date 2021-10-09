@@ -39,7 +39,8 @@ fn align_addr_to_word(addr: usize) -> usize {
 
 pub struct Inferior {
     child: Child,
-    pub breakpoints: HashMap<usize, u8>
+    pub breakpoints: HashMap<usize, u8>,
+    tmp_breakpoint: usize
 }
 
 impl Inferior {
@@ -53,7 +54,8 @@ impl Inferior {
         }
         let mut inferior = Inferior {
             child: cmd.spawn().ok()?,
-            breakpoints: HashMap::new()
+            breakpoints: HashMap::new(),
+            tmp_breakpoint: 0
         };
 
         for addr in breakpoints.keys() {
@@ -121,25 +123,29 @@ impl Inferior {
     #[allow(mutable_borrow_reservation_conflict)]
     fn step_over_breakpoint(&mut self) {
         let mut regs = ptrace::getregs(self.pid()).unwrap();
-        let rip = self.get_rip().unwrap();
+        let rip = self.get_rip().unwrap() - 1;
         // if stopped at a breakpoint
-        if let Some(orig_byte) = self.breakpoints.get(&(rip - 1)) {
+        if let Some(orig_byte) = self.breakpoints.get(&(rip)) {
             // restore the first byte of the instruction we replaced
-            self.write_byte(rip - 1, *orig_byte).unwrap();
+            self.write_byte(rip, *orig_byte).unwrap();
             // rewind the instruction pointer
-            regs.rip = (rip - 1) as u64;
+            regs.rip = rip as u64;
             ptrace::setregs(self.pid(), regs).unwrap();
             // go to next instruction
             ptrace::step(self.pid(), None).unwrap();
             // wait for inferior to stop due to SIGTRAP
             self.wait(None).unwrap();
             // restore 0xcc in the breakpoint location
-            self.write_byte(rip - 1, 0xcc).unwrap();
+            self.write_byte(rip, 0xcc).unwrap();
+        }
+        if rip == self.tmp_breakpoint {
+            self.breakpoints.remove(&rip);
         }
     }
 
     fn single_step_instruction(&mut self) {
-        if self.breakpoints.contains_key(&self.get_rip().unwrap()) {
+        let rip = self.get_rip().unwrap() - 1;
+        if self.breakpoints.contains_key(&rip) {
             self.step_over_breakpoint()
         } else {
             ptrace::step(self.pid(), None).unwrap();
@@ -217,8 +223,13 @@ impl Inferior {
 
         let status = self.continue_run()?;
 
+        let current_line = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
         for addr in to_delete {
-            self.remove_breakpoint(addr);
+            if addr == current_line.address - 1 {
+                self.tmp_breakpoint = addr;
+            } else {
+                self.remove_breakpoint(addr);
+            }
         }
 
         Ok(status)
