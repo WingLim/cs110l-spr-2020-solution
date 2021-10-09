@@ -40,7 +40,7 @@ fn align_addr_to_word(addr: usize) -> usize {
 pub struct Inferior {
     child: Child,
     pub breakpoints: HashMap<usize, u8>,
-    tmp_breakpoint: usize
+    tmp_bp_key: usize
 }
 
 impl Inferior {
@@ -55,7 +55,7 @@ impl Inferior {
         let mut inferior = Inferior {
             child: cmd.spawn().ok()?,
             breakpoints: HashMap::new(),
-            tmp_breakpoint: 0
+            tmp_bp_key: 0
         };
 
         for addr in breakpoints.keys() {
@@ -138,7 +138,7 @@ impl Inferior {
             // restore 0xcc in the breakpoint location
             self.write_byte(rip, 0xcc).unwrap();
         }
-        if rip == self.tmp_breakpoint {
+        if rip == self.tmp_bp_key {
             self.breakpoints.remove(&rip);
         }
     }
@@ -226,7 +226,7 @@ impl Inferior {
         let current_line = debug_data.get_line_from_addr(self.get_rip().unwrap()).unwrap();
         for addr in to_delete {
             if addr == current_line.address - 1 {
-                self.tmp_breakpoint = addr;
+                self.tmp_bp_key = addr;
             } else {
                 self.remove_breakpoint(addr);
             }
