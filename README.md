@@ -19,4 +19,6 @@ And it is a fork from [cs110l-spr-2020-starter-code](https://github.com/reberhar
 
 ## Notice
 
-You **SHOULD NOT** copy and parse from this repo, if there are any question about CS 100L, you can contact me from my GitHub profile.
+You **SHOULD NOT** just copy and parse from this repo.
+
+If there are any question about CS 100L, you can contact me from my GitHub profile for communication.
