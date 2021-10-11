@@ -3,6 +3,7 @@ mod response;
 
 use clap::Clap;
 use rand::{Rng, SeedableRng};
+use threadpool::ThreadPool;
 use std::net::{TcpListener, TcpStream};
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
@@ -43,6 +44,7 @@ struct CmdOptions {
 /// to, what servers have failed, rate limiting counts, etc.)
 ///
 /// You should add fields to this struct in later milestones.
+#[derive(Clone)]
 struct ProxyState {
     /// How frequently we check whether upstream servers are alive (Milestone 4)
     #[allow(dead_code)]
@@ -90,10 +92,15 @@ fn main() {
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
     };
+    let n_workers = 4;
+    let pool = ThreadPool::new(n_workers);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
-            // Handle the connection!
-            handle_connection(stream, &state);
+            let state = state.clone();
+            pool.execute(move|| {
+                // Handle the connection!
+                handle_connection(stream, &state);
+            });
         }
     }
 }
