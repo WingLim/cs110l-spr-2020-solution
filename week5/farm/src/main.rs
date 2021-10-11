@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 use std::{env, process, thread};
-use crossbeam::channel;
+use crossbeam_channel as channel;
 
 /// Determines whether a number is prime. This function is taken from CS 110 factor.py.
 ///
