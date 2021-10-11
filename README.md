@@ -9,7 +9,7 @@ And it is a fork from [cs110l-spr-2020-starter-code](https://github.com/reberhar
 - [x] [Hello world](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/week1)
 - [x] [Ownership and structs](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/week2)
 - [x] [Error handling, I/O, and traits](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/week3)
-- [ ] [Farm meets multithreading](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/week5)
+- [x] [Farm meets multithreading](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/week5)
 - [ ] [Sharing Data by Communicating](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/week6)
 
 ## Projects
