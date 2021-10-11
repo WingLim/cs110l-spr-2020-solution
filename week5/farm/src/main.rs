@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::{env, process, thread};
+use crossbeam::channel;
 
 /// Determines whether a number is prime. This function is taken from CS 110 factor.py.
 ///
@@ -61,36 +61,33 @@ fn get_input_numbers() -> VecDeque<u32> {
     numbers
 }
 
-/// Pop a number from numbers.
-fn get_number_from_queue(numbers: &mut Arc<Mutex<VecDeque<u32>>>) -> Option<u32> {
-    let mut numbers_ref = numbers.lock().unwrap();
-    numbers_ref.pop_front()
-}
-
-/// Thread function to multithread handle factor number
-fn worker_thread(mut numbers: Arc<Mutex<VecDeque<u32>>>) {
-    while let Some(num) = get_number_from_queue(&mut numbers) {
-        factor_number(num);
-    }
-}
-
 fn main() {
     let num_threads = num_cpus::get();
     println!("Farm starting on {} CPUs", num_threads);
     let start = Instant::now();
 
     // call get_input_numbers() and store a queue of numbers to factor
-    let numbers = Arc::new(Mutex::new(get_input_numbers()));
+    let numbers = get_input_numbers();
+
+    let (sender, receiver) = channel::unbounded();
 
     // spawn `num_threads` threads, each of which pops numbers off the queue and calls
     // factor_number() until the queue is empty
     let mut threads = Vec::new();
     for _ in 0..num_threads {
-        let numbers_ref = numbers.clone();
+        let receiver = receiver.clone();
         threads.push(thread::spawn(move || {
-            worker_thread(numbers_ref);
+            while let Ok(num) = receiver.recv() {
+                factor_number(num);
+            }
         }));
     }
+
+    for num in numbers {
+        sender.send(num).expect("Tried writing to channel, but there are no receivers");
+    }
+
+    drop(sender);
 
     // join all the threads you created
     for handle in threads {
