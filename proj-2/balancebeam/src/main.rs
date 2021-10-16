@@ -1,10 +1,12 @@
 mod request;
 mod response;
+mod rate_limiter;
 
 use std::{io::ErrorKind, sync::Arc};
 use clap::Clap;
 use rand::{Rng, SeedableRng};
-use tokio::{net::{TcpListener, TcpStream}, sync::RwLock, time::{sleep, Duration}};
+use rate_limiter::Counter;
+use tokio::{net::{TcpListener, TcpStream}, sync::{Mutex, RwLock}, time::{sleep, Duration}};
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -55,7 +57,9 @@ struct ProxyState {
     /// Addresses of servers that we are proxying to
     upstream_addresses: Vec<String>,
     /// Status of upstream servers
-    upstream_status: RwLock<UpstreamsStatus>
+    upstream_status: RwLock<UpstreamsStatus>,
+
+    limiter: Mutex<Counter>
 }
 
 struct UpstreamsStatus {
@@ -131,6 +135,7 @@ async fn main() {
         active_health_check_interval: options.active_health_check_interval,
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
+        limiter: Mutex::new(Counter::new(options.max_requests_per_minute)),
     };
     
     let shared_state = Arc::new(state);
@@ -140,9 +145,26 @@ async fn main() {
         active_health_check(shared_state_ref).await;
     });
 
+    if shared_state.max_requests_per_minute > 0 {
+        let shared_state_ref = shared_state.clone();
+        tokio::spawn(async move {
+            limiter_refresh(shared_state_ref, 60).await;
+        });
+    }
+
     loop {
         match listener.accept().await {
-            Ok((stream, _)) => {
+            Ok((mut stream, _)) => {
+                if shared_state.max_requests_per_minute > 0 {
+                    let mut limiter = shared_state.limiter.lock().await;
+                    let addr = stream.peer_addr().unwrap().ip();
+                    limiter.add(addr);
+                    if limiter.is_limit(addr) {
+                        let response = response::make_http_error(http::StatusCode::TOO_MANY_REQUESTS);
+                        response::write_to_stream(&response, &mut stream).await.unwrap();
+                        continue;
+                    }
+                }
                 let shared_state_ref = shared_state.clone();
                 tokio::spawn(async move {
                     handle_connection(stream, shared_state_ref).await
@@ -151,6 +173,12 @@ async fn main() {
             Err(_) => { break; },
         }
     }
+}
+
+async fn limiter_refresh(state: Arc<ProxyState>, interval: u64) {
+    sleep(Duration::from_secs(interval)).await;
+    let mut limiter = state.limiter.lock().await;
+    limiter.clear()
 }
 
 async fn pick_random_stream(state: &Arc<ProxyState>) -> Option<usize> {
