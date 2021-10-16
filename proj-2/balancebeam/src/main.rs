@@ -4,7 +4,7 @@ mod response;
 use std::{io::ErrorKind, sync::Arc};
 use clap::Clap;
 use rand::{Rng, SeedableRng};
-use tokio::{net::{TcpListener, TcpStream}, sync::RwLock};
+use tokio::{net::{TcpListener, TcpStream}, sync::RwLock, time::{sleep, Duration}};
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -46,21 +46,22 @@ struct CmdOptions {
 /// You should add fields to this struct in later milestones.
 struct ProxyState {
     /// How frequently we check whether upstream servers are alive (Milestone 4)
-    #[allow(dead_code)]
     active_health_check_interval: usize,
     /// Where we should send requests when doing active health checks (Milestone 4)
-    #[allow(dead_code)]
     active_health_check_path: String,
     /// Maximum number of requests an individual IP can make in a minute (Milestone 5)
     #[allow(dead_code)]
     max_requests_per_minute: usize,
     /// Addresses of servers that we are proxying to
     upstream_addresses: Vec<String>,
+    /// Status of upstream servers
     upstream_status: RwLock<UpstreamsStatus>
 }
 
 struct UpstreamsStatus {
+    /// Alive upstream counts
     counts: usize,
+    /// Upstream status, one by one match upstream_addresses
     status: Vec<bool>
 }
 
@@ -80,9 +81,18 @@ impl UpstreamsStatus {
         self.counts == 0
     }
 
-    fn set_dead(&mut self, idx: usize) {
-        self.counts -= 1;
-        self.status[idx] = false;
+    fn set_up(&mut self, idx: usize) {
+        if !self.is_alive(idx) { 
+            self.counts += 1;
+            self.status[idx] = true;
+        }
+    }
+
+    fn set_down(&mut self, idx: usize) {
+        if self.is_alive(idx) {
+            self.counts -= 1;
+            self.status[idx] = false;
+        }
     }
 }
 
@@ -124,6 +134,12 @@ async fn main() {
     };
     
     let shared_state = Arc::new(state);
+    
+    let shared_state_ref = shared_state.clone();
+    tokio::spawn(async move {
+        active_health_check(shared_state_ref).await;
+    });
+
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
@@ -153,6 +169,43 @@ async fn pick_random_stream(state: &Arc<ProxyState>) -> Option<usize> {
     }
 }
 
+async fn check_server(state: &Arc<ProxyState>, idx: usize, path: &String) -> Option<bool> {
+    let addr = &state.upstream_addresses[idx];
+    if let Ok(mut stream) = TcpStream::connect(addr).await {
+        let request = http::Request::builder()
+                .method(http::Method::GET)
+                .uri(path)
+                .header("Host", addr)
+                .body(Vec::new())
+                .unwrap();
+        let _ = request::write_to_stream(&request, &mut stream).await.ok()?;
+        let res = response::read_from_stream(&mut stream, &http::Method::GET).await.ok()?;
+        if res .status().as_u16() != 200 {
+            None
+        } else {
+            Some(true)
+        }
+    } else {
+        None
+    }
+}
+
+async fn active_health_check(state: Arc<ProxyState>) {
+    let interval = state.active_health_check_interval as u64;
+    let path = &state.active_health_check_path;
+    loop {
+        sleep(Duration::from_secs(interval)).await;
+        let mut upstream_status = state.upstream_status.write().await;
+        for idx in 0..upstream_status.status.len() {
+            if check_server(&state, idx, path).await.is_some() {
+                upstream_status.set_up(idx);
+            } else {
+                upstream_status.set_down(idx);
+            }
+        }
+    }
+}
+
 async fn connect_to_upstream(state: Arc<ProxyState>) -> Result<TcpStream, std::io::Error> {
     loop {
         if let Some(idx) = pick_random_stream(&state).await {
@@ -162,7 +215,7 @@ async fn connect_to_upstream(state: Arc<ProxyState>) -> Result<TcpStream, std::i
                 Err(err) => {
                     log::error!("Failed to connect to upstream {}: {}", addr, err);
                     let mut upstream_status = state.upstream_status.write().await;
-                    upstream_status.set_dead(idx);
+                    upstream_status.set_down(idx);
                 }
             }
         } else {
