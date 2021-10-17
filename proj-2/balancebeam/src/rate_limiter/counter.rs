@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
+use super::RateLimiterStrategy;
 
 pub struct Counter {
     limit: usize,
@@ -13,14 +14,16 @@ impl Counter {
             requests: HashMap::new()
         }
     }
+}
 
-    pub fn register_request(&mut self, addr: IpAddr) -> bool {
+impl RateLimiterStrategy for Counter {
+    fn register_request(&mut self, addr: IpAddr) -> bool {
         let count = self.requests.entry(addr).or_insert(0);
         *count += 1;
         *count <= self.limit
     }
 
-    pub fn clear(&mut self) {
+    fn refresh(&mut self) {
         self.requests.clear()
     }
 }

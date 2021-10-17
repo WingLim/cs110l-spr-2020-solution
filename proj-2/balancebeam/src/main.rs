@@ -5,9 +5,9 @@ mod load_balance;
 
 use std::{io::ErrorKind, sync::Arc};
 use clap::Clap;
-use rate_limiter::Counter;
+use rate_limiter::RateLimiterStrategy;
 use tokio::{net::{TcpListener, TcpStream}, sync::{Mutex, RwLock}, time::{sleep, Duration}};
-use crate::load_balance::{random::Random, round_robin::RoundRobin};
+use crate::{load_balance::{random::Random, round_robin::RoundRobin}, rate_limiter::counter::Counter};
 use crate::load_balance::LoadBalancingStrategy;
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
@@ -68,7 +68,7 @@ pub struct ProxyState {
     /// Status of upstream servers
     upstream_status: RwLock<UpstreamsStatus>,
 
-    limiter: Mutex<Counter>,
+    limiter: Mutex<Box<dyn RateLimiterStrategy>>,
 
     load_balancer: Box<dyn LoadBalancingStrategy>
 }
@@ -146,7 +146,7 @@ async fn main() {
         active_health_check_interval: options.active_health_check_interval,
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
-        limiter: Mutex::new(Counter::new(options.max_requests_per_minute)),
+        limiter: Mutex::new(Box::new(Counter::new(options.max_requests_per_minute))),
         load_balancer: set_up_balancer(options.load_balance),
     };
     
@@ -200,7 +200,7 @@ fn set_up_balancer(balancer: String) -> Box<dyn LoadBalancingStrategy> {
 async fn limiter_refresh(state: Arc<ProxyState>, interval: u64) {
     sleep(Duration::from_secs(interval)).await;
     let mut limiter = state.limiter.lock().await;
-    limiter.clear()
+    limiter.refresh()
 }
 
 async fn check_server(state: &Arc<ProxyState>, idx: usize, path: &String) -> Option<bool> {
