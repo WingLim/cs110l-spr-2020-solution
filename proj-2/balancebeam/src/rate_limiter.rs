@@ -19,7 +19,7 @@ impl Counter {
         *count += 1;
     }
 
-    pub fn is_limit(&self, addr: IpAddr) -> bool {
+    pub fn is_limited(&self, addr: IpAddr) -> bool {
         self.counter[&addr] > self.limit
     }
 
