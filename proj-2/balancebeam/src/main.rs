@@ -1,12 +1,14 @@
 mod request;
 mod response;
 mod rate_limiter;
+mod load_balance;
 
 use std::{io::ErrorKind, sync::Arc};
 use clap::Clap;
-use rand::{Rng, SeedableRng};
 use rate_limiter::Counter;
 use tokio::{net::{TcpListener, TcpStream}, sync::{Mutex, RwLock}, time::{sleep, Duration}};
+use crate::load_balance::{random::Random, round_robin::RoundRobin};
+use crate::load_balance::LoadBalancingStrategy;
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -40,13 +42,20 @@ struct CmdOptions {
         default_value = "0"
     )]
     max_requests_per_minute: usize,
+    #[clap(
+        long,
+        about = "Load balance strategy",
+        default_value = "round_robin",
+        possible_values = &["random", "round_robin"]
+    )]
+    load_balance: String
 }
 
 /// Contains information about the state of balancebeam (e.g. what servers we are currently proxying
 /// to, what servers have failed, rate limiting counts, etc.)
 ///
 /// You should add fields to this struct in later milestones.
-struct ProxyState {
+pub struct ProxyState {
     /// How frequently we check whether upstream servers are alive (Milestone 4)
     active_health_check_interval: usize,
     /// Where we should send requests when doing active health checks (Milestone 4)
@@ -59,7 +68,9 @@ struct ProxyState {
     /// Status of upstream servers
     upstream_status: RwLock<UpstreamsStatus>,
 
-    limiter: Mutex<Counter>
+    limiter: Mutex<Counter>,
+
+    load_balancer: Box<dyn LoadBalancingStrategy>
 }
 
 struct UpstreamsStatus {
@@ -136,6 +147,7 @@ async fn main() {
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
         limiter: Mutex::new(Counter::new(options.max_requests_per_minute)),
+        load_balancer: set_up_balancer(options.load_balance),
     };
     
     let shared_state = Arc::new(state);
@@ -174,26 +186,21 @@ async fn main() {
     }
 }
 
+fn set_up_balancer(balancer: String) -> Box<dyn LoadBalancingStrategy> {
+    match balancer.as_str() {
+        "round_robin" => {
+            Box::new(RoundRobin::new())
+        }
+        _ => { 
+            Box::new(Random::new())
+        }
+    }
+}
+
 async fn limiter_refresh(state: Arc<ProxyState>, interval: u64) {
     sleep(Duration::from_secs(interval)).await;
     let mut limiter = state.limiter.lock().await;
     limiter.clear()
-}
-
-async fn pick_random_stream(state: &Arc<ProxyState>) -> Option<usize> {
-    let mut rng = rand::rngs::StdRng::from_entropy();
-    let upstream_status = state.upstream_status.read().await;
-    if upstream_status.all_dead() {
-        return None;
-    }
-
-    let mut idx;
-    loop {
-        idx = rng.gen_range(0..state.upstream_addresses.len());
-        if upstream_status.is_alive(idx) {
-            return Some(idx)
-        }
-    }
 }
 
 async fn check_server(state: &Arc<ProxyState>, idx: usize, path: &String) -> Option<bool> {
@@ -235,7 +242,7 @@ async fn active_health_check(state: Arc<ProxyState>) {
 
 async fn connect_to_upstream(state: Arc<ProxyState>) -> Result<TcpStream, std::io::Error> {
     loop {
-        if let Some(idx) = pick_random_stream(&state).await {
+        if let Some(idx) = state.load_balancer.select_backend(&state).await {
             let addr = &state.upstream_addresses[idx];
             match TcpStream::connect(addr).await {
                 Ok(stream) => return Ok(stream),
