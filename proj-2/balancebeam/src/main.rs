@@ -159,7 +159,7 @@ async fn main() {
                     let mut limiter = shared_state.limiter.lock().await;
                     let addr = stream.peer_addr().unwrap().ip();
                     limiter.add(addr);
-                    if limiter.is_limit(addr) {
+                    if limiter.is_limited(addr) {
                         let response = response::make_http_error(http::StatusCode::TOO_MANY_REQUESTS);
                         response::write_to_stream(&response, &mut stream).await.unwrap();
                         continue;
