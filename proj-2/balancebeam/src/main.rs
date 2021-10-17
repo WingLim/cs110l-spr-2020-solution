@@ -44,11 +44,18 @@ struct CmdOptions {
     max_requests_per_minute: usize,
     #[clap(
         long,
+        about = "Rate limit strategy",
+        default_value = "counter",
+        possible_values  = &["counter"]
+    )]
+    rate_limiter: String,
+    #[clap(
+        long,
         about = "Load balance strategy",
         default_value = "round_robin",
         possible_values = &["random", "round_robin"]
     )]
-    load_balance: String
+    load_balancer: String,
 }
 
 /// Contains information about the state of balancebeam (e.g. what servers we are currently proxying
@@ -146,8 +153,8 @@ async fn main() {
         active_health_check_interval: options.active_health_check_interval,
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
-        limiter: Mutex::new(Box::new(Counter::new(options.max_requests_per_minute))),
-        load_balancer: set_up_balancer(options.load_balance),
+        limiter: Mutex::new(set_up_rate_limiter(options.rate_limiter, options.max_requests_per_minute)),
+        load_balancer: set_up_balancer(options.load_balancer),
     };
     
     let shared_state = Arc::new(state);
@@ -182,6 +189,14 @@ async fn main() {
                 });
             },
             Err(_) => { break; },
+        }
+    }
+}
+
+fn set_up_rate_limiter(limiter: String, max_requests_per_minute: usize) -> Box<dyn RateLimiterStrategy> {
+    match limiter.as_str() {
+        _ => {
+            Box::new(Counter::new(max_requests_per_minute))
         }
     }
 }
