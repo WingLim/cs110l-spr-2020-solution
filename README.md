@@ -15,7 +15,7 @@ And it is a fork from [cs110l-spr-2020-starter-code](https://github.com/reberhar
 ## Projects
 
 - [x] [The DEET Debugger](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/proj-1/deet)
-- [ ] [Balancebeam](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/proj-2/balancebeam)
+- [x] [Balancebeam](https://github.com/WingLim/cs110l-spr-2020-solution/tree/main/proj-2/balancebeam)
 
 ## Notice
 
