@@ -2,7 +2,7 @@ use std::sync::Arc;
 use rand::{Rng, SeedableRng};
 use async_trait::async_trait;
 use crate::ProxyState;
-use super::LoadBalancingStrategy;
+use super::LoadBalanceStrategy;
 
 pub struct Random {}
 
@@ -13,7 +13,7 @@ impl Random {
 }
 
 #[async_trait]
-impl LoadBalancingStrategy for Random {
+impl LoadBalanceStrategy for Random {
     async fn select_backend<'l>(&'l self, state: &'l Arc<ProxyState>) -> Option<usize> {
         let mut rng = rand::rngs::StdRng::from_entropy();
         let upstream_status = state.upstream_status.read().await;

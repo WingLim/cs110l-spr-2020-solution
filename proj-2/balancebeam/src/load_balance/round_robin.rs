@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use crate::ProxyState;
-use super::LoadBalancingStrategy;
+use super::LoadBalanceStrategy;
 
 pub struct RoundRobin {
     rrc: Arc<Mutex<u32>>
@@ -16,7 +16,7 @@ impl RoundRobin {
 }
 
 #[async_trait]
-impl LoadBalancingStrategy for RoundRobin {
+impl LoadBalanceStrategy for RoundRobin {
     async fn select_backend<'l>(&'l self, state: &'l Arc<ProxyState>) -> Option<usize> {
         let upstream_status = state.upstream_status.read().await;
         if upstream_status.all_dead() {

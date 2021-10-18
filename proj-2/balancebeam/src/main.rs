@@ -5,10 +5,10 @@ mod load_balance;
 
 use std::{io::ErrorKind, sync::Arc};
 use clap::Clap;
-use rate_limiter::RateLimiterStrategy;
 use tokio::{net::{TcpListener, TcpStream}, sync::{Mutex, RwLock}, time::{sleep, Duration}};
-use crate::{load_balance::{random::Random, round_robin::RoundRobin}, rate_limiter::counter::Counter};
-use crate::load_balance::LoadBalancingStrategy;
+use crate::rate_limiter::counter::Counter;
+use crate::rate_limiter::{RateLimiterStrategy, ArgRateLimiter};
+use crate::load_balance::{LoadBalanceStrategy, ArgLoadBalance};
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -43,19 +43,19 @@ struct CmdOptions {
     )]
     max_requests_per_minute: usize,
     #[clap(
+        arg_enum,
         long,
         about = "Rate limit strategy",
         default_value = "counter",
-        possible_values  = &["counter"]
     )]
-    rate_limiter: String,
+    rate_limiter: ArgRateLimiter,
     #[clap(
+        arg_enum,
         long,
         about = "Load balance strategy",
-        default_value = "round_robin",
-        possible_values = &["random", "round_robin"]
+        default_value = "round-robin",
     )]
-    load_balancer: String,
+    load_balancer: ArgLoadBalance,
 }
 
 /// Contains information about the state of balancebeam (e.g. what servers we are currently proxying
@@ -74,10 +74,10 @@ pub struct ProxyState {
     upstream_addresses: Vec<String>,
     /// Status of upstream servers
     upstream_status: RwLock<UpstreamsStatus>,
-
+    /// Strategy of limiter to use
     limiter: Mutex<Box<dyn RateLimiterStrategy>>,
-
-    load_balancer: Box<dyn LoadBalancingStrategy>
+    /// Strategy of load balancer to use
+    load_balancer: Box<dyn LoadBalanceStrategy>
 }
 
 struct UpstreamsStatus {
@@ -154,7 +154,7 @@ async fn main() {
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
         limiter: Mutex::new(set_up_rate_limiter(options.rate_limiter, options.max_requests_per_minute)),
-        load_balancer: set_up_balancer(options.load_balancer),
+        load_balancer: options.load_balancer.into(),
     };
     
     let shared_state = Arc::new(state);
@@ -193,21 +193,10 @@ async fn main() {
     }
 }
 
-fn set_up_rate_limiter(limiter: String, max_requests_per_minute: usize) -> Box<dyn RateLimiterStrategy> {
-    match limiter.as_str() {
-        _ => {
+fn set_up_rate_limiter(limiter: ArgRateLimiter, max_requests_per_minute: usize) -> Box<dyn RateLimiterStrategy> {
+    match limiter {
+        ArgRateLimiter::Counter => {
             Box::new(Counter::new(max_requests_per_minute))
-        }
-    }
-}
-
-fn set_up_balancer(balancer: String) -> Box<dyn LoadBalancingStrategy> {
-    match balancer.as_str() {
-        "round_robin" => {
-            Box::new(RoundRobin::new())
-        }
-        _ => { 
-            Box::new(Random::new())
         }
     }
 }
